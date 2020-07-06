@@ -1,0 +1,84 @@
+#!/bin/bash
+
+if [ -n "$DEBUG_INIT" ]; then
+	set -x
+fi
+
+set -e
+set -o pipefail
+
+start_clamd()
+{
+	if [ -n "$CLAMD_CONF_Foreground" ]; then
+		echo "Cannot set Foreground configuration directive." >&2
+		exit 1
+	fi
+
+	CLAMD_CONF_Foreground="yes"
+	: "${CLAMD_CONF_User:=clamav}"
+	: "${CLAMD_CONF_DatabaseDirectory:=/var/lib/clamav}"
+
+	configure_from_environment CLAMD_CONF_ /etc/clamav/clamd.conf
+
+	for cvdfile in main.cvd daily.cvd bytecode.cvd; do
+		if ! [ -e "${CLAMD_CONF_DatabaseDirectory}/$cvdfile" ]; then
+			wget -O "${CLAMD_CONF_DatabaseDirectory}/$cvdfile" "http://database.clamav.net/$cvdfile"
+			chown "${CLAMD_CONF_User}" "${CLAMD_CONF_DatabaseDirectory}/$cvdfile"
+		fi
+	done
+
+	mkdir -p "$CLAMD_CONF_DatabaseDirectory" /var/run/clamav
+	chown "${CLAMD_CONF_User}" "$CLAMD_CONF_DatabaseDirectory" /var/run/clamav
+
+	echo "Running clamd with the following configuration:" >&2
+	cat /etc/clamav/clamd.conf >&2
+
+	exec /usr/sbin/clamd
+}
+
+start_freshclam()
+{
+	: "${FRESHCLAM_CONF_DatabaseOwner:=clamav}"
+	: "${FRESHCLAM_CONF_DatabaseDirectory:=/var/lib/clamav}"
+
+	configure_from_environment FRESHCLAM_CONF_ /etc/clamav/freshclam.conf
+
+	mkdir -p "$FRESHCLAM_CONF_DatabaseDirectory"
+	chown "$FRESHCLAM_CONF_DatabaseOwner" "$FRESHCLAM_CONF_DatabaseDirectory"
+
+	echo "Running freshclam with the following configuration:" >&2
+	cat /etc/clamav/freshclam.conf >&2
+
+	trap "exit 0" TERM
+
+	while true; do
+		/usr/bin/freshclam
+		sleep "${FRESHCLAM_INTERVAL:-3600}"
+	done
+}
+
+configure_from_environment()
+{
+	local prefix="$1"
+	local file="$2"
+	local var=""
+
+	rm -f $file
+
+	for var in $(compgen -A variable "$prefix"); do
+		echo "${var#$prefix} ${!var}" >>"$file"
+	done
+}
+
+case "$1" in
+	clamd)
+		start_clamd;;
+	freshclam)
+		start_freshclam;;
+	*)
+		echo "Unrecognised command '$1'" >&2
+		exit 1
+		;;
+esac
+
+
