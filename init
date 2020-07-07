@@ -22,7 +22,7 @@ start_clamd()
 
 	for cvdfile in main.cvd daily.cvd bytecode.cvd; do
 		if ! [ -e "${CLAMD_CONF_DatabaseDirectory}/$cvdfile" ]; then
-			wget -O "${CLAMD_CONF_DatabaseDirectory}/$cvdfile" "http://database.clamav.net/$cvdfile"
+			wget -O "${CLAMD_CONF_DatabaseDirectory}/$cvdfile" "https://database.clamav.net/$cvdfile"
 			chown "${CLAMD_CONF_User}" "${CLAMD_CONF_DatabaseDirectory}/$cvdfile"
 		fi
 	done
